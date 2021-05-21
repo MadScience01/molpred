@@ -16,7 +16,7 @@
 - Check that your molpred_env python appears first in the list
     `where python`
 - Install the package requirements list
-    `pip install -r requirements.txt`
+    `pip install -r requirements-minimal.txt`
 ####Notes
 - Tensorflow package needs CUDA to properly use the NVIDIA GPU cards, without this, you might find warnings in the code
 execution, you can find instructions here: 
@@ -35,7 +35,7 @@ https://docs.nvidia.com/cuda/cuda-installation-guide-microsoft-windows/index.htm
 - Check that your molpred_env python appears first in the list
     `which python`
 - Install the package requirements list
-    `pip3.8 install -r requirements.txt`
+    `pip3.8 install -r requirements-minimal.txt`
     
         
 ### Test MolPred
