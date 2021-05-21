@@ -1,4 +1,4 @@
-###MolPred README
+### MolPred README
 
 - _MolPred_ is a tool designed to predict the value of the column density (_log(N)_) and the exitation temperature 
 (T<sub>ex</sub>). It works by performing a regression with several neural networks trained from examples coming from MADCUBA. 
@@ -17,10 +17,6 @@
     `where python`
 - Install the package requirements list
     `pip install -r requirements-minimal.txt`
-####Notes
-- Tensorflow package needs CUDA to properly use the NVIDIA GPU cards, without this, you might find warnings in the code
-execution, you can find instructions here: 
-https://docs.nvidia.com/cuda/cuda-installation-guide-microsoft-windows/index.html
 
 ### Installation Instructions (Linux)
 
@@ -54,5 +50,10 @@ In next updates, we will include scripts to allow you to train your own neural n
 with MolPred.
 - An overview of Molpred and what it does, can be read in our paper (Currently submitted to Experimental Astronomy).
 - More technical details, will be available in the Thesis (in preparation).
-    
+
+- Tensorflow package needs CUDA to properly use the NVIDIA GPU cards, without this, you might find warnings in the code
+execution, you can find instructions here: 
+https://docs.nvidia.com/cuda/cuda-installation-guide-microsoft-windows/index.html
+- MolPred might not work correctly in virtual machines as there is no GPU available, we're working on that.
+   
      
