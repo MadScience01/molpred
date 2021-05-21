@@ -50,7 +50,7 @@ def get_prediction(input_object, initial_spectrum):
     model_min_mae = input_object[5]
     input_intensities = transform_freqs_to_colnames(input_transitions)
     # initial_spectrum_intensities = initial_spectrum[['Intensity']]
-    model = load_model(model_file)
+    model = load_model(model_file, compile=False)
     # input_spectrum_scaler = get_spectrum_scaler_object(initial_spectrum_intensities)
 
     # there are 2 types of scalers for the intensities, type1 is the scaler used in the training examples.
@@ -138,7 +138,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
 
 if __name__ == '__main__':
     gpus = tf.config.experimental.list_physical_devices('GPU')
-    if gpus:
+    if len(gpus)>1:
         try:
             for gpu in gpus:
                 tf.config.experimental.set_memory_growth(gpu, True)
