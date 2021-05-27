@@ -1,4 +1,4 @@
-### MolPred README
+###MolPred README
 
 - _MolPred_ is a tool designed to predict the value of the column density (_log(N)_) and the exitation temperature 
 (T<sub>ex</sub>). It works by performing a regression with several neural networks trained from examples coming from MADCUBA. 
@@ -16,7 +16,7 @@
 - Check that your molpred_env python appears first in the list
     `where python`
 - Install the package requirements list
-    `pip install -r requirements-minimal.txt`
+    `pip install -r requirements.txt`
 
 ### Installation Instructions (Linux)
 
@@ -31,7 +31,7 @@
 - Check that your molpred_env python appears first in the list
     `which python`
 - Install the package requirements list
-    `pip3.8 install -r requirements-minimal.txt`
+    `pip3.8 install -r requirements.txt`
     
         
 ### Test MolPred
@@ -42,6 +42,18 @@
 - When finishing, predictions should be left in directory "predictions"
 - To finish using the virtual environment, deactivate it with
     `deactivate`
+
+### Release Notes v1.0.1
+
+- Added compatibility improvements, rearranged code, code can now run in virtual machines, 
+you need to disable GPU support by setting CUDA environment variable to -1
+
+- Added time calculations to measure performance differences based on how many CPUs or GPUs are in use,
+you can run the program many times and get an average execution time.
+
+- If you use GPU, please note that you cannot use more multiprocessing workers than the 
+number of GPUs available, so if you use 2 GPUs, you can have a maximum of 2 workers.
+Adding more workers will end in a  CUDA Out of Memory error.
 
 ### Release Notes v1.0
 - This is our first release of MolPred. It's still pretty basic, but it's our starting point
