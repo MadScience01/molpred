@@ -3,10 +3,11 @@ import argparse
 import numpy as np
 from multiprocessing import Pool
 import glob2
-from tensorflow.keras.models import load_model
+import multiprocessing
+
 from sklearn.preprocessing import MinMaxScaler
 from functools import partial
-import tensorflow as tf
+
 import os
 from datetime import datetime
 import joblib
@@ -42,6 +43,9 @@ def get_model_with_lowest_mae(molecule):
 
 
 def get_prediction(input_object, initial_spectrum):
+    from tensorflow.keras.models import load_model
+    import tensorflow as tf
+
     input_transitions = input_object[0]
     molecule = input_object[1]
     model_file = input_object[2][0]
@@ -49,15 +53,17 @@ def get_prediction(input_object, initial_spectrum):
     dataset_scaler_object = input_object[4]
     model_min_mae = input_object[5]
     input_intensities = transform_freqs_to_colnames(input_transitions)
-    # initial_spectrum_intensities = initial_spectrum[['Intensity']]
-    model = load_model(model_file, compile=False)
-    # input_spectrum_scaler = get_spectrum_scaler_object(initial_spectrum_intensities)
-
-    # there are 2 types of scalers for the intensities, type1 is the scaler used in the training examples.
-    # and type2 is one calculated based on the input spectrum here.
     scaled_input_type1 = dataset_scaler_object.transform(input_intensities)
-    # scaled_input_type2 = input_spectrum_scaler.transform(input_intensities.T)
 
+    # ------------------------------
+    # this block enables GPU enabled multiprocessing
+    #core_config = tf.compat.v1.ConfigProto(intra_op_parallelism_threads=5, inter_op_parallelism_threads=5)
+    core_config = tf.compat.v1.ConfigProto()
+    core_config.gpu_options.allow_growth = True
+    session = tf.compat.v1.Session(config=core_config)
+    tf.compat.v1.keras.backend.set_session(session)
+    # -------------------------------
+    model = load_model(model_file, compile=False)
     predictions = model.predict(scaled_input_type1, batch_size=1)
     descaled_predictions = label_scaler_object.inverse_transform(predictions)
     return [molecule, model_file, predictions, descaled_predictions, model_min_mae]
@@ -133,92 +139,91 @@ def get_spectrum_scaler_object(initial_spectrum):
     spectrum_scaler = scaler.fit(initial_spectrum)
     return spectrum_scaler
 
+def run_program(times_to_repeat):
+        execution_times = []
+        for i in range(0,times_to_repeat):
+            parser = argparse.ArgumentParser()
+            parser.add_argument('--specfile', dest='specfile', help="file containing the spectrum to be analyzed.",
+                                required=False)
+            cs = parser.parse_args()
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
+            specfile = cs.specfile
+
+            # Config Section:
+            datasets_dir = '..' + os.sep + 'datasets'
+            molecules = ["CO", "HCO+", "SiO", "CH3CN"]
+            # End Config Section
+
+            # Pre Processing Section
+            df_initial_spectrum = pd.read_csv(specfile, sep='\t')
+            df_initial_spectrum.columns = ['Frequency', 'Intensity']
+            df_initial_spectrum['Intensity'] = df_initial_spectrum['Intensity'].fillna(0.0)
+            # save_scalers(datasets_dir)
+            label_scalers, dataset_scalers = get_scalers()
+            df_errors = pd.DataFrame(
+                columns=('TestedMolecule', 'predicted_log(N)', 'predicted_Tex', 'descaled_predicted_log(N)',
+                         'descaled_predicted_Tex', 'min_mae', 'model_file'))
+            input_objects = generate_inputs(df_initial_spectrum, molecules, label_scalers, dataset_scalers)
+
+            # End of Preprocessing
+
+            # Prediction Section
+            partial_func = partial(get_prediction, initial_spectrum=df_initial_spectrum)
+            # workers = int(mp.cpu_count()/2)
+            multiprocessing.set_start_method('spawn', force=True)
+            workers = 1
+            pool = Pool(processes=workers)
+            # pool.map(f, range(mp.cpu_count()))
+            start = datetime.now()
+            results = pool.map(partial_func, input_objects)
+            pool.close()
+            pool.join()
+            end = datetime.now()
+            elapsed_time = end - start
+
+            ## End of Prediction
+
+            ### Post Processing Section.
+            print("Prediction Results:")
+            print("")
+            for result in results:
+                molecule = result[0]
+                model_file = result[1]
+                scaled_predicted_T = result[2][0][0]
+                scaled_predicted_N = result[2][0][1]
+                descaled_predicted_T = result[3][0][0]
+                descaled_predicted_N = result[3][0][1]
+                min_mae = result[4]
+                df_error = pd.DataFrame(columns=(
+                    'TestedMolecule', 'predicted_log(N)', 'predicted_Tex', 'descaled_predicted_log(N)',
+                    'descaled_predicted_Tex', 'min_mae', 'model_file'))
+                df_error.loc[0] = [molecule, scaled_predicted_N, scaled_predicted_T, descaled_predicted_N,
+                                   descaled_predicted_T, min_mae, model_file]
+                df_errors = df_errors.append(df_error, ignore_index=True)
+                print("---------------------")
+                print("Molecule: " + molecule)
+                print("Model File: " + model_file)
+                print("Scaled Predicted Tex: " + str(scaled_predicted_T))
+                print("Scaled Predicted log(N): " + str(scaled_predicted_N))
+                print("Descaled Predicted Tex: " + str(descaled_predicted_T))
+                print("Descaled Predicted log(N): " + str(descaled_predicted_N))
+                print("min_mae: " + str(min_mae))
+                print("---------------------")
+            print("Predictions took: " + str(elapsed_time.total_seconds() * 1000) + " milliseconds using " + str(
+                workers) + " workers")
+            prediction_savefile = '..' + os.sep + 'predictions' + os.sep + str(
+                datetime.now().strftime('%Y_%m_%d_%H_%M')) + '_molpred_predictions.csv'
+            #df_errors.to_csv(prediction_savefile)
+            #print('Predictions saved to file: ' + prediction_savefile)
+            execution_times.append(elapsed_time.total_seconds())
+        print("average execution time in "+str(times_to_repeat)+" executions: "+str(np.average(execution_times))+" seconds")
+        print('Program Finished.')
+
+#set to -1 to disable GPU
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 if __name__ == '__main__':
-    gpus = tf.config.experimental.list_physical_devices('GPU')
-    if len(gpus)>1:
-        try:
-            for gpu in gpus:
-                tf.config.experimental.set_memory_growth(gpu, True)
-        except RuntimeError as e:
-            print(e)
-    mirrored_strategy = tf.distribute.MirroredStrategy(cross_device_ops=tf.distribute.HierarchicalCopyAllReduce())
-    print("Num GPUs Available: ", len(gpus))
+    run_program(1)
 
-    with mirrored_strategy.scope():
 
-        parser = argparse.ArgumentParser()
-        parser.add_argument('--specfile', dest='specfile', help="file containing the spectrum to be analyzed.",
-                            required=False)
-        cs = parser.parse_args()
 
-        specfile = cs.specfile
-
-        # Config Section:
-        datasets_dir = '..' + os.sep + 'datasets'
-        molecules = ["CO", "HCO+", "SiO", "CH3CN"]
-        # End Config Section
-
-        # Pre Processing Section
-        df_initial_spectrum = pd.read_csv(specfile, sep='\t')
-        df_initial_spectrum.columns = ['Frequency', 'Intensity']
-        df_initial_spectrum['Intensity'] = df_initial_spectrum['Intensity'].fillna(0.0)
-        # save_scalers(datasets_dir)
-        label_scalers, dataset_scalers = get_scalers()
-        df_errors = pd.DataFrame(
-            columns=('TestedMolecule', 'predicted_log(N)', 'predicted_Tex', 'descaled_predicted_log(N)',
-                     'descaled_predicted_Tex', 'min_mae', 'model_file'))
-        input_objects = generate_inputs(df_initial_spectrum, molecules, label_scalers, dataset_scalers)
-
-        # End of Preprocessing
-
-        # Prediction Section
-        partial_func = partial(get_prediction, initial_spectrum=df_initial_spectrum)
-        # workers = int(mp.cpu_count()/2)
-        workers = 1
-        pool = Pool(processes=workers)
-        # pool.map(f, range(mp.cpu_count()))
-        start = datetime.now()
-        results = pool.map(partial_func, input_objects)
-        pool.close()
-        pool.join()
-        end = datetime.now()
-        elapsed_time = end - start
-
-        ## End of Prediction
-
-        ### Post Processing Section.
-        print("Prediction Results:")
-        print("")
-        for result in results:
-            molecule = result[0]
-            model_file = result[1]
-            scaled_predicted_T = result[2][0][0]
-            scaled_predicted_N = result[2][0][1]
-            descaled_predicted_T = result[3][0][0]
-            descaled_predicted_N = result[3][0][1]
-            min_mae = result[4]
-            df_error = pd.DataFrame(columns=(
-                'TestedMolecule', 'predicted_log(N)', 'predicted_Tex', 'descaled_predicted_log(N)',
-                'descaled_predicted_Tex', 'min_mae', 'model_file'))
-            df_error.loc[0] = [molecule, scaled_predicted_N, scaled_predicted_T, descaled_predicted_N,
-                               descaled_predicted_T, min_mae, model_file]
-            df_errors = df_errors.append(df_error, ignore_index=True)
-            print("---------------------")
-            print("Molecule: " + molecule)
-            print("Model File: " + model_file)
-            print("Scaled Predicted Tex: " + str(scaled_predicted_T))
-            print("Scaled Predicted log(N): " + str(scaled_predicted_N))
-            print("Descaled Predicted Tex: " + str(descaled_predicted_T))
-            print("Descaled Predicted log(N): " + str(descaled_predicted_N))
-            print("min_mae: " + str(min_mae))
-            print("---------------------")
-        print("Predictions took: " + str(elapsed_time.total_seconds() * 1000) + " milliseconds using " + str(
-            workers) + " workers")
-        prediction_savefile = '..' + os.sep + 'predictions' + os.sep + str(
-            datetime.now().strftime('%Y_%m_%d_%H_%M')) + '_molpred_predictions.csv'
-        df_errors.to_csv(prediction_savefile)
-        print('Predictions saved to file: ' + prediction_savefile)
-    print('Program Finished.')
